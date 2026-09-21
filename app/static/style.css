@@ -259,6 +259,9 @@ tr.loser td:first-child { border-left: 3px solid var(--danger); }
 tr.gainer td { background: var(--ok-bg); }
 tr.gainer td:first-child { border-left: 3px solid var(--ok); }
 
+tr.newcomer td { background: #e0e7ff; }
+tr.newcomer td:first-child { border-left: 3px solid var(--accent); }
+
 .paradox-card .proof {
   margin: 0 0 14px;
   padding: 8px 12px;

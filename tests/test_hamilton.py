@@ -7,6 +7,7 @@ from app.hamilton import (
     exact_decimal,
     fraction_str,
     hamilton_allocate,
+    new_region_disturbance,
     population_paradox,
     scan_range,
 )
@@ -124,3 +125,54 @@ def test_population_paradox_seat_conservation():
         result = population_paradox([11, 31, 14], [15, 36, 16], s)
         assert sum(r["seats_before"] for r in result["rows"]) == s
         assert sum(r["seats_after"] for r in result["rows"]) == s
+
+
+def test_new_region_disturbance_builtin_example():
+    # 内置示例：人口 45/35/20，基准 8 席 -> [4, 3, 1]；并入人口 15 的新地区、
+    # 新增 1 席（总 9 席）后变为 [3, 3, 2] + 新地区 1 席：
+    # 甲区减席、丙区增席，原地区之间同时出现减席与增席，构成扰动事件
+    result = new_region_disturbance([45, 35, 20], 8, 15, 1, 10)
+    assert [r["seats"] for r in result["baseline"]["rows"]] == [4, 3, 1]
+    first = result["scenarios"][0]
+    assert first["added_seats"] == 1
+    assert first["seats_total"] == 9
+    assert [r["seats"] for r in first["merged"]["rows"]] == [3, 3, 2, 1]
+    assert first["deltas"] == [-1, 0, 1]
+    assert first["losers"] == [0]
+    assert first["gainers"] == [2]
+    assert first["disturbance"] is True
+    assert [d["added_seats"] for d in result["disturbances"]] == [1]
+
+
+def test_new_region_disturbance_requires_both_directions():
+    # 人口 50/30/20，基准 10 席 -> [5, 3, 2]；并入人口 25 的新地区：
+    # 新增 1 席时甲区 5 -> 4，但席位流向新地区而非原地区，无原地区增席，不构成扰动
+    result = new_region_disturbance([50, 30, 20], 10, 25, 1, 2)
+    sc1, sc2 = result["scenarios"]
+    assert [r["seats"] for r in sc1["merged"]["rows"]] == [4, 3, 2, 2]
+    assert sc1["deltas"] == [-1, 0, 0]
+    assert sc1["disturbance"] is False
+    assert sc2["deltas"] == [0, 0, 0]
+    assert sc2["disturbance"] is False
+    assert result["disturbances"] == []
+
+
+def test_new_region_disturbance_seat_conservation_and_flag():
+    result = new_region_disturbance([45, 35, 20], 8, 15, 1, 20)
+    for sc in result["scenarios"]:
+        assert sum(r["seats"] for r in sc["merged"]["rows"]) == 8 + sc["added_seats"]
+        # 扰动标记当且仅当原地区之间同时存在减席与增席
+        assert sc["disturbance"] == (bool(sc["losers"]) and bool(sc["gainers"]))
+        assert sc["losers"] == [i for i, d in enumerate(sc["deltas"]) if d < 0]
+        assert sc["gainers"] == [i for i, d in enumerate(sc["deltas"]) if d > 0]
+
+
+def test_new_region_disturbance_baseline_unchanged_by_scan():
+    # 基准分配只依赖原地区人口与基准席位，与扫描区间无关
+    base = new_region_disturbance([45, 35, 20], 8, 15, 3, 7)["baseline"]
+    assert [r["seats"] for r in base["rows"]] == [4, 3, 1]
+    assert [r["quota"] for r in base["rows"]] == [
+        Fraction(18, 5),
+        Fraction(14, 5),
+        Fraction(8, 5),
+    ]

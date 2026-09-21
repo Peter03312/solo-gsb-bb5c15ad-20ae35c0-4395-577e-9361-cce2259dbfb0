@@ -142,6 +142,49 @@ def population_paradox(
     }
 
 
+def new_region_disturbance(
+    populations: list[int], base_seats: int, new_population: int, start: int, end: int
+) -> dict:
+    """新增地区席位扰动扫描。
+
+    基准：原地区按 base_seats 用现有精确 Hamilton 规则分配一次；
+    对 [start, end] 内每个新增席位数 k，把新地区（人口 new_population）并入，
+    以 base_seats + k 为总席位重新分配，并比较每个原地区席位与基准的差值。
+    仅当原地区之间同时出现减席与增席时，该档记为扰动事件。
+
+    返回 {"baseline", "scenarios", "disturbances"}：baseline 为原地区的基准
+    分配结果；scenarios 逐档记录总席位、并入后的完整分配、各原地区席位
+    变化量、减席/增席地区下标与是否扰动；disturbances 为其中的扰动事件。
+    """
+    baseline = hamilton_allocate(populations, base_seats)
+    base_alloc = [row["seats"] for row in baseline["rows"]]
+
+    scenarios = []
+    disturbances = []
+    for k in range(start, end + 1):
+        merged = hamilton_allocate(populations + [new_population], base_seats + k)
+        deltas = [
+            row["seats"] - base_alloc[i]
+            for i, row in enumerate(merged["rows"][: len(populations)])
+        ]
+        losers = [i for i, d in enumerate(deltas) if d < 0]
+        gainers = [i for i, d in enumerate(deltas) if d > 0]
+        disturbance = bool(losers) and bool(gainers)
+        scenario = {
+            "added_seats": k,
+            "seats_total": base_seats + k,
+            "merged": merged,
+            "deltas": deltas,
+            "losers": losers,
+            "gainers": gainers,
+            "disturbance": disturbance,
+        }
+        scenarios.append(scenario)
+        if disturbance:
+            disturbances.append(scenario)
+    return {"baseline": baseline, "scenarios": scenarios, "disturbances": disturbances}
+
+
 def scan_range(populations: list[int], start: int, end: int) -> tuple[dict, list]:
     """对 [start, end] 内每个总席位数做分配，并扫描阿拉巴马悖论。
 

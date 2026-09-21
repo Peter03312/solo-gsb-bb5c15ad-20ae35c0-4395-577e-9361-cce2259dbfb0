@@ -8,9 +8,16 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .hamilton import exact_decimal, fraction_str, population_paradox, scan_range
+from .hamilton import (
+    exact_decimal,
+    fraction_str,
+    new_region_disturbance,
+    population_paradox,
+    scan_range,
+)
 
 MAX_SPAN = 500          # 扫描跨度上限：end - start <= 500
+MAX_NEW_SPAN = 50       # 新增席位扫描跨度上限：added_end - added_start <= 50
 MAX_REGIONS = 100       # 地区数量上限
 MAX_POPULATION = 10**12 # 单个地区人口上限
 MAX_SEATS = 10**6       # 席位总数上限
@@ -77,6 +84,27 @@ class PopulationRequest(BaseModel):
         return self
 
 
+class NewRegionRequest(BaseModel):
+    regions: list[Region] = Field(min_length=2, max_length=MAX_REGIONS)
+    base_seats: int = Field(ge=1, le=MAX_SEATS)
+    new_region: Region
+    added_start: int = Field(ge=1, le=MAX_SEATS)
+    added_end: int = Field(ge=1, le=MAX_SEATS)
+
+    @model_validator(mode="after")
+    def check_request(self) -> "NewRegionRequest":
+        if self.added_end < self.added_start:
+            raise ValueError("新增席位终止值必须不小于起始值")
+        if self.added_end - self.added_start > MAX_NEW_SPAN:
+            raise ValueError(f"新增席位扫描跨度（终止值 − 起始值）不能超过 {MAX_NEW_SPAN}")
+        if self.base_seats + self.added_end > MAX_SEATS:
+            raise ValueError(f"基准席位与新增席位之和不能超过 {MAX_SEATS}")
+        names = [r.name for r in self.regions] + [self.new_region.name]
+        if len(set(names)) != len(names):
+            raise ValueError("地区名称不能重复（含新增地区）")
+        return self
+
+
 # 可复现内置示例：总人口 100，总席位 10 -> 11 时丁区由 1 席降为 0 席。
 EXAMPLE = {
     "regions": [
@@ -99,6 +127,21 @@ POPULATION_EXAMPLE = {
         {"name": "丙区", "population_before": 14, "population_after": 16},
     ],
     "seats": 10,
+}
+
+# 新增地区席位扰动可复现内置示例：原地区人口 45/35/20（总人口 100），
+# 基准总席位 8 -> 分配 4、3、1；并入人口 15 的丁区且新增 1 席（总席位 9）后
+# 变为 3、3、2（丁区 1 席）：甲区减席、丙区增席，构成扰动事件。
+NEW_REGION_EXAMPLE = {
+    "regions": [
+        {"name": "甲区", "population": 45},
+        {"name": "乙区", "population": 35},
+        {"name": "丙区", "population": 20},
+    ],
+    "base_seats": 8,
+    "new_region": {"name": "丁区", "population": 15},
+    "added_start": 1,
+    "added_end": 10,
 }
 
 
@@ -219,6 +262,73 @@ def population(req: PopulationRequest) -> dict:
 @app.get("/api/population-example")
 def get_population_example() -> dict:
     return POPULATION_EXAMPLE
+
+
+@app.post("/api/new-region")
+def new_region(req: NewRegionRequest) -> dict:
+    populations = [r.population for r in req.regions]
+    names = [r.name for r in req.regions]
+    result = new_region_disturbance(
+        populations,
+        req.base_seats,
+        req.new_region.population,
+        req.added_start,
+        req.added_end,
+    )
+    baseline_seats = [row["seats"] for row in result["baseline"]["rows"]]
+
+    def scenario_out(sc: dict) -> dict:
+        return {
+            "added_seats": sc["added_seats"],
+            "seats_total": sc["seats_total"],
+            "remaining_seats": sc["merged"]["remaining_seats"],
+            "rows": [serialize_row(row) for row in sc["merged"]["rows"]],
+            "deltas": sc["deltas"],
+            "losers": sc["losers"],
+            "gainers": sc["gainers"],
+            "disturbance": sc["disturbance"],
+        }
+
+    def mover(index: int, sc: dict) -> dict:
+        return {
+            "index": index,
+            "name": names[index],
+            "before": baseline_seats[index],
+            "after": sc["merged"]["rows"][index]["seats"],
+        }
+
+    return {
+        "regions": [
+            {"index": i, "name": r.name, "population": r.population}
+            for i, r in enumerate(req.regions)
+        ],
+        "new_region": {"name": req.new_region.name, "population": req.new_region.population},
+        "base_seats": req.base_seats,
+        "added_start": req.added_start,
+        "added_end": req.added_end,
+        "total_population_base": sum(populations),
+        "total_population_merged": sum(populations) + req.new_region.population,
+        "baseline": {
+            "seats_total": req.base_seats,
+            "remaining_seats": result["baseline"]["remaining_seats"],
+            "rows": [serialize_row(row) for row in result["baseline"]["rows"]],
+        },
+        "scenarios": [scenario_out(sc) for sc in result["scenarios"]],
+        "disturbances": [
+            {
+                "added_seats": sc["added_seats"],
+                "seats_total": sc["seats_total"],
+                "losers": [mover(i, sc) for i in sc["losers"]],
+                "gainers": [mover(i, sc) for i in sc["gainers"]],
+            }
+            for sc in result["disturbances"]
+        ],
+    }
+
+
+@app.get("/api/new-region-example")
+def get_new_region_example() -> dict:
+    return NEW_REGION_EXAMPLE
 
 
 @app.get("/api/health")

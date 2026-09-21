@@ -10,8 +10,9 @@
   <header>
     <h1>最大余数法（Hamilton 法）席位分配悖论核查</h1>
     <p>
-      支持两种核查模式：阿拉巴马悖论扫描（总席位增加一个，某地区反而失去席位）与
-      人口悖论分析（总席位不变，增长比更高的地区反而减席、增长比更低的地区反而增席）。
+      支持三种核查模式：阿拉巴马悖论扫描（总席位增加一个，某地区反而失去席位）、
+      人口悖论分析（总席位不变，增长比更高的地区反而减席、增长比更低的地区反而增席）与
+      新增地区席位扰动（并入新增地区并按新增席位重新分配后，原地区之间同时出现减席与增席）。
       全部计算使用精确分数与整数交叉相乘，不使用浮点或舍入值判定。
     </p>
   </header>
@@ -19,6 +20,7 @@
   <nav class="mode-tabs" aria-label="核查模式">
     <button id="tab-alabama" class="tab active" type="button">阿拉巴马悖论扫描</button>
     <button id="tab-population" class="tab" type="button">人口悖论分析</button>
+    <button id="tab-newregion" class="tab" type="button">新增地区席位扰动</button>
   </nav>
 
   <main id="mode-alabama">
@@ -109,6 +111,70 @@
         <h2>两期 Hamilton 分配明细</h2>
         <p class="hint">两期分别按现有精确 Hamilton 规则分配的完整配额、余数排序与席位归属。</p>
         <div class="compare" id="pop-alloc-wrap"></div>
+      </div>
+    </section>
+  </main>
+
+  <main id="mode-newregion" hidden>
+    <section class="card">
+      <h2>1. 录入数据</h2>
+      <p class="hint">
+        录入原有地区人口与基准总席位，以及新增地区的人口和新增席位扫描区间。
+        系统先按现有精确 Hamilton 规则计算原地区的基准分配；再对每个新增席位数，
+        把新增地区并入、以基准席位加新增席位重新分配，逐档比较各原地区席位变化。
+      </p>
+      <table class="input-table">
+        <thead>
+          <tr><th class="col-num">#</th><th>地区名称</th><th>人口（正整数）</th><th class="col-op"></th></tr>
+        </thead>
+        <tbody id="nr-tbody"></tbody>
+      </table>
+      <div class="toolbar">
+        <button id="nr-add-region" type="button">＋ 添加地区</button>
+        <button id="nr-load-example" type="button">载入可复现示例</button>
+      </div>
+      <div class="range-inputs">
+        <label>基准总席位
+          <input type="number" id="nr-base-seats" min="1" step="1" value="8">
+        </label>
+        <label>新增地区名称
+          <input type="text" id="nr-new-name" maxlength="40" value="丁区">
+        </label>
+        <label>新增地区人口（正整数）
+          <input type="number" id="nr-new-pop" min="1" step="1" value="15">
+        </label>
+      </div>
+      <div class="range-inputs">
+        <label>新增席位起始值
+          <input type="number" id="nr-added-start" min="1" step="1" value="1">
+        </label>
+        <label>新增席位终止值
+          <input type="number" id="nr-added-end" min="1" step="1" value="10">
+        </label>
+        <span class="hint">跨度（终止值 − 起始值）不超过 50</span>
+      </div>
+      <div class="toolbar">
+        <button id="nr-scan-btn" class="primary" type="button">开始分析</button>
+        <button id="nr-reset-btn" type="button">清空</button>
+      </div>
+      <p id="nr-error-box" class="error" hidden></p>
+    </section>
+
+    <section id="nr-result-section" hidden>
+      <div class="card" id="nr-summary-card"></div>
+      <div class="card">
+        <h2>基准分配（未并入新增地区）</h2>
+        <p class="hint">原地区按基准总席位分配的精确配额、余数排名与席位归属；每个新增席位档均与本基准比较。</p>
+        <div class="table-wrap" id="nr-baseline-wrap"></div>
+      </div>
+      <div id="nr-disturbance-details"></div>
+      <div class="card">
+        <h2>逐档总览</h2>
+        <p class="hint">
+          每行对应一个新增席位数：列出各原地区席位（括号内为相对基准的变化量）与新增地区席位；
+          标 ⚠ 的行为扰动事件（原地区之间同时出现减席与增席）。
+        </p>
+        <div class="table-wrap" id="nr-overview-wrap"></div>
       </div>
     </section>
   </main>

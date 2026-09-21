@@ -4,18 +4,23 @@
 
 const tabAlabama = document.getElementById("tab-alabama");
 const tabPopulation = document.getElementById("tab-population");
+const tabNewregion = document.getElementById("tab-newregion");
 const modeAlabama = document.getElementById("mode-alabama");
 const modePopulation = document.getElementById("mode-population");
+const modeNewregion = document.getElementById("mode-newregion");
 
-function switchMode(populationMode) {
-  tabAlabama.classList.toggle("active", !populationMode);
-  tabPopulation.classList.toggle("active", populationMode);
-  modeAlabama.hidden = populationMode;
-  modePopulation.hidden = !populationMode;
+function switchMode(mode) {
+  tabAlabama.classList.toggle("active", mode === "alabama");
+  tabPopulation.classList.toggle("active", mode === "population");
+  tabNewregion.classList.toggle("active", mode === "newregion");
+  modeAlabama.hidden = mode !== "alabama";
+  modePopulation.hidden = mode !== "population";
+  modeNewregion.hidden = mode !== "newregion";
 }
 
-tabAlabama.addEventListener("click", () => switchMode(false));
-tabPopulation.addEventListener("click", () => switchMode(true));
+tabAlabama.addEventListener("click", () => switchMode("alabama"));
+tabPopulation.addEventListener("click", () => switchMode("population"));
+tabNewregion.addEventListener("click", () => switchMode("newregion"));
 
 /* ---------- 通用工具 ---------- */
 
@@ -245,7 +250,7 @@ function renderSummary(data) {
   }
 }
 
-function buildAllocTable(result, counterpart, loserIndexes) {
+function buildAllocTable(result, counterpart, loserIndexes, gainerIndexes, newcomerIndexes) {
   const table = document.createElement("table");
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
@@ -262,6 +267,8 @@ function buildAllocTable(result, counterpart, loserIndexes) {
   for (const row of result.rows) {
     const tr = document.createElement("tr");
     if (loserIndexes && loserIndexes.has(row.index)) tr.classList.add("loser");
+    else if (gainerIndexes && gainerIndexes.has(row.index)) tr.classList.add("gainer");
+    else if (newcomerIndexes && newcomerIndexes.has(row.index)) tr.classList.add("newcomer");
 
     const other = counterpart ? counterpart.rows[row.index] : null;
     let seatCls = "num";
@@ -743,6 +750,332 @@ function renderPopAlloc(data) {
   popAllocWrap.append(panelBefore, arrow, panelAfter);
 }
 
+/* ---------- 新增地区席位扰动 ---------- */
+
+const nrTbody = document.getElementById("nr-tbody");
+const nrErrorBox = document.getElementById("nr-error-box");
+const nrResultSection = document.getElementById("nr-result-section");
+const nrSummaryCard = document.getElementById("nr-summary-card");
+const nrBaselineWrap = document.getElementById("nr-baseline-wrap");
+const nrDisturbanceDetails = document.getElementById("nr-disturbance-details");
+const nrOverviewWrap = document.getElementById("nr-overview-wrap");
+
+let nrRowSeq = 0;
+
+function nrRenumber() {
+  nrTbody.querySelectorAll("tr").forEach((tr, i) => {
+    tr.querySelector(".row-num").textContent = i + 1;
+  });
+}
+
+function addNrRegion(name = "", population = "") {
+  nrRowSeq += 1;
+  const tr = document.createElement("tr");
+
+  const tdNum = el("td", "row-num center");
+  const tdName = document.createElement("td");
+  const nameInput = el("input");
+  nameInput.type = "text";
+  nameInput.className = "nr-name";
+  nameInput.placeholder = `地区${nrRowSeq}`;
+  nameInput.maxLength = 40;
+  nameInput.value = name;
+  tdName.appendChild(nameInput);
+
+  const tdPop = document.createElement("td");
+  const popInput = el("input");
+  popInput.type = "number";
+  popInput.className = "nr-pop";
+  popInput.min = "1";
+  popInput.step = "1";
+  popInput.value = population;
+  tdPop.appendChild(popInput);
+
+  const tdOp = document.createElement("td");
+  const delBtn = el("button", "del-btn", "✕");
+  delBtn.type = "button";
+  delBtn.title = "删除该行";
+  delBtn.addEventListener("click", () => {
+    tr.remove();
+    nrRenumber();
+  });
+  tdOp.appendChild(delBtn);
+
+  tr.append(tdNum, tdName, tdPop, tdOp);
+  nrTbody.appendChild(tr);
+  nrRenumber();
+}
+
+function resetNrRegions() {
+  nrTbody.innerHTML = "";
+  addNrRegion();
+  addNrRegion();
+  addNrRegion();
+}
+
+function showNrError(msg) {
+  nrErrorBox.textContent = msg;
+  nrErrorBox.hidden = false;
+}
+
+function clearNrError() {
+  nrErrorBox.hidden = true;
+  nrErrorBox.textContent = "";
+}
+
+function collectNrInputs() {
+  const regions = [];
+  nrTbody.querySelectorAll("tr").forEach((tr, i) => {
+    const name = tr.querySelector(".nr-name").value.trim() || `地区${i + 1}`;
+    const popRaw = tr.querySelector(".nr-pop").value.trim();
+    regions.push({ name, population: popRaw, row: i + 1 });
+  });
+  return {
+    regions,
+    baseSeats: document.getElementById("nr-base-seats").value.trim(),
+    newName: document.getElementById("nr-new-name").value.trim() || "新增地区",
+    newPop: document.getElementById("nr-new-pop").value.trim(),
+    addedStart: document.getElementById("nr-added-start").value.trim(),
+    addedEnd: document.getElementById("nr-added-end").value.trim(),
+  };
+}
+
+function validateNrInputs({ regions, baseSeats, newName, newPop, addedStart, addedEnd }) {
+  const problems = [];
+  if (regions.length < 2) problems.push("至少需要 2 个原有地区。");
+  const names = new Set();
+  for (const r of regions) {
+    if (!isPositiveIntString(r.population)) {
+      problems.push(`第 ${r.row} 行「${r.name}」的人口必须是正整数。`);
+    }
+    if (names.has(r.name)) problems.push(`地区名称「${r.name}」重复。`);
+    names.add(r.name);
+  }
+  if (names.has(newName)) problems.push(`新增地区名称「${newName}」与原有地区重复。`);
+  if (!isPositiveIntString(newPop)) problems.push("新增地区的人口必须是正整数。");
+  if (!/^\d+$/.test(baseSeats) || Number(baseSeats) < 1) problems.push("基准总席位必须是不小于 1 的整数。");
+  if (!/^\d+$/.test(addedStart) || Number(addedStart) < 1) problems.push("新增席位起始值必须是不小于 1 的整数。");
+  if (!/^\d+$/.test(addedEnd)) problems.push("新增席位终止值必须是整数。");
+  if (problems.length === 0) {
+    if (Number(addedEnd) < Number(addedStart)) problems.push("新增席位终止值必须不小于起始值。");
+    else if (Number(addedEnd) - Number(addedStart) > 50) problems.push("新增席位扫描跨度（终止值 − 起始值）不能超过 50。");
+  }
+  return problems;
+}
+
+async function loadNrExample() {
+  clearNrError();
+  try {
+    const resp = await fetch("/api/new-region-example");
+    const data = await resp.json();
+    nrTbody.innerHTML = "";
+    data.regions.forEach((r) => addNrRegion(r.name, r.population));
+    document.getElementById("nr-base-seats").value = data.base_seats;
+    document.getElementById("nr-new-name").value = data.new_region.name;
+    document.getElementById("nr-new-pop").value = data.new_region.population;
+    document.getElementById("nr-added-start").value = data.added_start;
+    document.getElementById("nr-added-end").value = data.added_end;
+  } catch (e) {
+    showNrError("载入示例失败：" + e.message);
+  }
+}
+
+async function scanNewRegion() {
+  clearNrError();
+  const inputs = collectNrInputs();
+  const problems = validateNrInputs(inputs);
+  if (problems.length > 0) {
+    showNrError(problems.join("\n"));
+    return;
+  }
+  const payload = {
+    regions: inputs.regions.map((r) => ({ name: r.name, population: Number(r.population) })),
+    base_seats: Number(inputs.baseSeats),
+    new_region: { name: inputs.newName, population: Number(inputs.newPop) },
+    added_start: Number(inputs.addedStart),
+    added_end: Number(inputs.addedEnd),
+  };
+  let data;
+  try {
+    const resp = await fetch("/api/new-region", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    data = await resp.json();
+    if (!resp.ok) {
+      showNrError(extractError(data));
+      return;
+    }
+  } catch (e) {
+    showNrError("请求失败：" + e.message);
+    return;
+  }
+  renderNrResults(data);
+  nrResultSection.hidden = false;
+  nrResultSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/* ---------- 新增地区席位扰动结果渲染 ---------- */
+
+function nrMoverText(movers) {
+  return movers.map((m) => `${m.name}（${m.before} → ${m.after} 席）`).join("、");
+}
+
+function renderNrResults(data) {
+  renderNrSummary(data);
+  renderNrBaseline(data);
+  renderNrDisturbances(data);
+  renderNrOverview(data);
+}
+
+function renderNrSummary(data) {
+  nrSummaryCard.innerHTML = "";
+  nrSummaryCard.appendChild(el("h2", null, "2. 分析结果"));
+
+  const grid = el("div", "summary-grid");
+  const items = [
+    ["原地区数", data.regions.length],
+    ["基准总席位", data.base_seats],
+    ["新增地区", `${data.new_region.name}（人口 ${data.new_region.population}）`],
+    ["新增席位区间", `${data.added_start} ~ ${data.added_end}`],
+    ["计算档数", data.scenarios.length],
+    ["扰动事件", data.disturbances.length],
+  ];
+  for (const [label, value] of items) {
+    const item = el("div", "item");
+    item.appendChild(el("div", "label", label));
+    item.appendChild(el("div", "value", String(value)));
+    grid.appendChild(item);
+  }
+  nrSummaryCard.appendChild(grid);
+
+  if (data.disturbances.length === 0) {
+    nrSummaryCard.appendChild(
+      el("p", "verdict-ok", "✓ 该区间内未发生席位扰动：没有任何一档同时出现原地区减席与增席。")
+    );
+  } else {
+    const box = el("div", "verdict-bad");
+    box.appendChild(el("div", null, `⚠ 发现 ${data.disturbances.length} 次席位扰动事件：`));
+    const ul = document.createElement("ul");
+    for (const d of data.disturbances) {
+      ul.appendChild(
+        el(
+          "li",
+          null,
+          `新增 ${d.added_seats} 席（总席位 ${data.base_seats} → ${d.seats_total}）：` +
+            `减席 ${nrMoverText(d.losers)}；增席 ${nrMoverText(d.gainers)}`
+        )
+      );
+    }
+    box.appendChild(ul);
+    nrSummaryCard.appendChild(box);
+  }
+}
+
+function renderNrBaseline(data) {
+  nrBaselineWrap.innerHTML = "";
+  const names = data.regions.map((r) => r.name);
+  nrBaselineWrap.appendChild(buildAllocTable({ rows: data.baseline.rows, names }, null, null));
+}
+
+function renderNrDisturbances(data) {
+  nrDisturbanceDetails.innerHTML = "";
+  const names = data.regions.map((r) => r.name);
+  const mergedNames = [...names, data.new_region.name];
+  const baseResult = { rows: data.baseline.rows, names };
+  const newcomerIndexes = new Set([data.regions.length]);
+
+  data.disturbances.forEach((d, idx) => {
+    const scenario = data.scenarios.find((s) => s.added_seats === d.added_seats);
+    const mergedResult = { rows: scenario.rows, names: mergedNames };
+    const loserIndexes = new Set(scenario.losers);
+    const gainerIndexes = new Set(scenario.gainers);
+
+    const card = el("div", "paradox-card");
+    card.appendChild(
+      el("h3", null, `⚠ 扰动 ${idx + 1}：新增 ${d.added_seats} 席（总席位 ${data.base_seats} → ${d.seats_total}）`)
+    );
+    card.appendChild(
+      el(
+        "p",
+        "sub",
+        `并入${data.new_region.name}（人口 ${data.new_region.population}）并新增 ${d.added_seats} 席后，` +
+          `原地区中 ${nrMoverText(d.losers)}减席、${nrMoverText(d.gainers)}增席。` +
+          `下表并列展示基准分配与并入后分配的精确配额、余数排名与席位归属（蓝色行为新增地区）。`
+      )
+    );
+
+    const compare = el("div", "compare");
+
+    const panelBefore = el("div", "panel");
+    const h1 = el("h4", null, "基准分配：总席位 ");
+    h1.appendChild(el("span", "seats", String(data.base_seats)));
+    panelBefore.appendChild(h1);
+    panelBefore.appendChild(buildAllocTable(baseResult, mergedResult, loserIndexes, gainerIndexes));
+
+    const arrow = el("div", "arrow", "→");
+
+    const panelAfter = el("div", "panel");
+    const h2 = el("h4", null, `并入${data.new_region.name}后：总席位 `);
+    h2.appendChild(el("span", "seats", String(d.seats_total)));
+    panelAfter.appendChild(h2);
+    panelAfter.appendChild(buildAllocTable(mergedResult, baseResult, loserIndexes, gainerIndexes, newcomerIndexes));
+
+    compare.append(panelBefore, arrow, panelAfter);
+    card.appendChild(compare);
+    nrDisturbanceDetails.appendChild(card);
+  });
+}
+
+function renderNrOverview(data) {
+  nrOverviewWrap.innerHTML = "";
+  const disturbanceByAdded = new Map(data.disturbances.map((d) => [d.added_seats, d]));
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headRow.appendChild(el("th", "num", "新增席位"));
+  headRow.appendChild(el("th", "num", "总席位"));
+  for (const r of data.regions) headRow.appendChild(el("th", "num", r.name));
+  headRow.appendChild(el("th", "num", data.new_region.name));
+  headRow.appendChild(el("th", null, "备注"));
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tb = document.createElement("tbody");
+  for (const scenario of data.scenarios) {
+    const tr = document.createElement("tr");
+    const disturbance = disturbanceByAdded.get(scenario.added_seats);
+    if (disturbance) tr.classList.add("paradox-from");
+
+    tr.appendChild(el("td", "num", `+${scenario.added_seats}`));
+    tr.appendChild(el("td", "num", String(scenario.seats_total)));
+    scenario.deltas.forEach((delta, i) => {
+      const seats = scenario.rows[i].seats;
+      const cls = delta < 0 ? "num seat-down" : delta > 0 ? "num seat-up" : "num";
+      const text = delta === 0 ? String(seats) : `${seats}（${deltaText(delta)}）`;
+      tr.appendChild(el("td", cls, text));
+    });
+    tr.appendChild(el("td", "num", String(scenario.rows[scenario.rows.length - 1].seats)));
+
+    let note = "";
+    if (disturbance) {
+      note = `⚠ 扰动：减席 ${nrMoverText(disturbance.losers)}；增席 ${nrMoverText(disturbance.gainers)}`;
+    } else if (scenario.deltas.some((d) => d !== 0)) {
+      const changes = scenario.deltas
+        .map((d, i) => (d !== 0 ? `${data.regions[i].name} ${scenario.rows[i].seats - d}→${scenario.rows[i].seats}` : null))
+        .filter(Boolean)
+        .join("、");
+      note = `席位变化（未同时出现减席与增席，不构成扰动）：${changes}`;
+    }
+    tr.appendChild(el("td", "note", note));
+    tb.appendChild(tr);
+  }
+  table.appendChild(tb);
+  nrOverviewWrap.appendChild(table);
+}
+
 /* ---------- 事件绑定 ---------- */
 
 document.getElementById("add-region").addEventListener("click", () => addRegion());
@@ -763,5 +1096,15 @@ document.getElementById("pop-reset-btn").addEventListener("click", () => {
   clearPopError();
 });
 
+document.getElementById("nr-add-region").addEventListener("click", () => addNrRegion());
+document.getElementById("nr-load-example").addEventListener("click", loadNrExample);
+document.getElementById("nr-scan-btn").addEventListener("click", scanNewRegion);
+document.getElementById("nr-reset-btn").addEventListener("click", () => {
+  resetNrRegions();
+  nrResultSection.hidden = true;
+  clearNrError();
+});
+
 resetRegions();
 resetPopRegions();
+resetNrRegions();

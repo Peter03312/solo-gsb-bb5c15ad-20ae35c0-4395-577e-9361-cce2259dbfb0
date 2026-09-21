@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hamilton 最大余数席位分配悖论核查</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>最大余数法（Hamilton 法）席位分配悖论核查</h1>
+    <p>
+      支持两种核查模式：阿拉巴马悖论扫描（总席位增加一个，某地区反而失去席位）与
+      人口悖论分析（总席位不变，增长比更高的地区反而减席、增长比更低的地区反而增席）。
+      全部计算使用精确分数与整数交叉相乘，不使用浮点或舍入值判定。
+    </p>
+  </header>
+
+  <nav class="mode-tabs" aria-label="核查模式">
+    <button id="tab-alabama" class="tab active" type="button">阿拉巴马悖论扫描</button>
+    <button id="tab-population" class="tab" type="button">人口悖论分析</button>
+  </nav>
+
+  <main id="mode-alabama">
+    <section class="card">
+      <h2>1. 录入数据</h2>
+      <table class="input-table">
+        <thead>
+          <tr><th class="col-num">#</th><th>地区名称</th><th>人口（正整数）</th><th class="col-op"></th></tr>
+        </thead>
+        <tbody id="region-tbody"></tbody>
+      </table>
+      <div class="toolbar">
+        <button id="add-region" type="button">＋ 添加地区</button>
+        <button id="load-example" type="button">载入可复现示例</button>
+      </div>
+      <div class="range-inputs">
+        <label>席位总数起始值
+          <input type="number" id="seat-start" min="1" step="1" value="8">
+        </label>
+        <label>席位总数终止值
+          <input type="number" id="seat-end" min="2" step="1" value="14">
+        </label>
+        <span class="hint">跨度（终止值 − 起始值）不超过 500</span>
+      </div>
+      <div class="toolbar">
+        <button id="scan-btn" class="primary" type="button">开始扫描</button>
+        <button id="reset-btn" type="button">清空</button>
+      </div>
+      <p id="error-box" class="error" hidden></p>
+    </section>
+
+    <section id="result-section" hidden>
+      <div class="card" id="summary-card"></div>
+      <div id="paradox-details"></div>
+      <div class="card">
+        <h2>席位总览</h2>
+        <p class="hint">每行对应一个总席位数下各地区的最终席位；标 ⚠ 的行表示从该档增至下一档时发生阿拉巴马悖论。</p>
+        <div class="table-wrap" id="overview-wrap"></div>
+      </div>
+    </section>
+  </main>
+
+  <main id="mode-population" hidden>
+    <section class="card">
+      <h2>1. 录入两期人口</h2>
+      <p class="hint">
+        为同一组地区录入前后两期人口（均为正整数）与固定总席位。系统对两期分别按
+        Hamilton 法精确分配，并以整数交叉相乘比较增长比。
+      </p>
+      <table class="input-table">
+        <thead>
+          <tr>
+            <th class="col-num">#</th><th>地区名称</th>
+            <th>前期人口（正整数）</th><th>后期人口（正整数）</th><th class="col-op"></th>
+          </tr>
+        </thead>
+        <tbody id="pop-tbody"></tbody>
+      </table>
+      <div class="toolbar">
+        <button id="pop-add-region" type="button">＋ 添加地区</button>
+        <button id="pop-load-example" type="button">载入可复现示例</button>
+      </div>
+      <div class="range-inputs">
+        <label>固定总席位
+          <input type="number" id="pop-seats" min="1" step="1" value="10">
+        </label>
+        <span class="hint">两期使用同一总席位数</span>
+      </div>
+      <div class="toolbar">
+        <button id="pop-analyze-btn" class="primary" type="button">开始分析</button>
+        <button id="pop-reset-btn" type="button">清空</button>
+      </div>
+      <p id="pop-error-box" class="error" hidden></p>
+    </section>
+
+    <section id="pop-result-section" hidden>
+      <div class="card" id="pop-summary-card"></div>
+      <div id="pop-anomaly-details"></div>
+      <div class="card">
+        <h2>两期并列对比</h2>
+        <p class="hint">
+          并列展示两期人口、精确增长比（后期人口 ÷ 前期人口）、两期席位与变化量；
+          红色行为人口悖论中的减席地区，绿色行为对应的增席地区。
+        </p>
+        <div class="table-wrap" id="pop-compare-wrap"></div>
+      </div>
+      <div class="card">
+        <h2>两期 Hamilton 分配明细</h2>
+        <p class="hint">两期分别按现有精确 Hamilton 规则分配的完整配额、余数排序与席位归属。</p>
+        <div class="compare" id="pop-alloc-wrap"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      决胜规则：余数较大者优先；余数相同，人口较多者优先；仍相同，录入顺序较早者优先。
+      配额、余数与增长比均以精确分数计算与展示（小数为精确舍入到 6 位的展示值）；
+      增长比大小一律由整数交叉相乘判定，不使用浮点或舍入值。
+    </p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

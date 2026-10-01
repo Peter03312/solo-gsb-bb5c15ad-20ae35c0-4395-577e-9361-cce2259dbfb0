@@ -161,3 +161,77 @@ def scan_range(populations: list[int], start: int, end: int) -> tuple[dict, list
         if losers:
             paradoxes.append({"from_seats": s, "to_seats": s + 1, "losers": losers})
     return allocations, paradoxes
+
+
+def new_region_disturbance(
+    populations: list[int],
+    base_seats: int,
+    new_population: int,
+    extra_start: int,
+    extra_end: int,
+) -> dict:
+    """新增地区席位扰动分析。
+
+    先对原地区按基准总席位做一次 Hamilton 分配（baseline）；随后把新增地区
+    并入人口列表，对 [extra_start, extra_end] 内每个新增席位数 k，以
+    base_seats + k 为总席位重新分配。逐档比较所有原地区相对基准分配的席位
+    变化，仅当原地区中同时出现减席者与增席者时标记为一次扰动事件
+    （新增地区自身的席位不计入减/增席判定）。
+
+    返回 {"base_seats", "new_population", "baseline", "results",
+    "disturbances"}：baseline 为原地区基准分配；results 逐档给出并入后的
+    完整分配（含新增地区）、各原地区席位变化及减/增席名单；disturbances
+    只收录扰动档。
+    """
+    baseline = hamilton_allocate(populations, base_seats)
+    base_seat_map = [row["seats"] for row in baseline["rows"]]
+
+    merged_populations = list(populations) + [new_population]
+    n_original = len(populations)
+
+    results = []
+    disturbances = []
+    for extra in range(extra_start, extra_end + 1):
+        total_seats = base_seats + extra
+        merged = hamilton_allocate(merged_populations, total_seats)
+
+        deltas = []
+        for i in range(n_original):
+            before = base_seat_map[i]
+            after = merged["rows"][i]["seats"]
+            deltas.append(
+                {"index": i, "before": before, "after": after, "delta": after - before}
+            )
+        losers = [d for d in deltas if d["delta"] < 0]
+        gainers = [d for d in deltas if d["delta"] > 0]
+        is_disturbance = bool(losers) and bool(gainers)
+
+        entry = {
+            "extra_seats": extra,
+            "seats_total": total_seats,
+            "remaining_seats": merged["remaining_seats"],
+            "rows": merged["rows"],
+            "deltas": deltas,
+            "new_region_seats": merged["rows"][n_original]["seats"],
+            "is_disturbance": is_disturbance,
+            "losers": losers,
+            "gainers": gainers,
+        }
+        results.append(entry)
+        if is_disturbance:
+            disturbances.append(
+                {
+                    "extra_seats": extra,
+                    "seats_total": total_seats,
+                    "losers": losers,
+                    "gainers": gainers,
+                }
+            )
+
+    return {
+        "base_seats": base_seats,
+        "new_population": new_population,
+        "baseline": baseline,
+        "results": results,
+        "disturbances": disturbances,
+    }

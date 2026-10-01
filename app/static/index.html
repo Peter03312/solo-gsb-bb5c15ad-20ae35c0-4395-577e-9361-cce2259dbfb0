@@ -10,8 +10,9 @@
   <header>
     <h1>最大余数法（Hamilton 法）席位分配悖论核查</h1>
     <p>
-      支持两种核查模式：阿拉巴马悖论扫描（总席位增加一个，某地区反而失去席位）与
-      人口悖论分析（总席位不变，增长比更高的地区反而减席、增长比更低的地区反而增席）。
+      支持三种核查模式：阿拉巴马悖论扫描（总席位增加一个，某地区反而失去席位）、
+      人口悖论分析（总席位不变，增长比更高的地区反而减席、增长比更低的地区反而增席）与
+      新增地区席位扰动（并入新增地区并重分配后，原地区之间同时出现减席与增席）。
       全部计算使用精确分数与整数交叉相乘，不使用浮点或舍入值判定。
     </p>
   </header>
@@ -19,6 +20,7 @@
   <nav class="mode-tabs" aria-label="核查模式">
     <button id="tab-alabama" class="tab active" type="button">阿拉巴马悖论扫描</button>
     <button id="tab-population" class="tab" type="button">人口悖论分析</button>
+    <button id="tab-disturbance" class="tab" type="button">新增地区席位扰动</button>
   </nav>
 
   <main id="mode-alabama">
@@ -109,6 +111,65 @@
         <h2>两期 Hamilton 分配明细</h2>
         <p class="hint">两期分别按现有精确 Hamilton 规则分配的完整配额、余数排序与席位归属。</p>
         <div class="compare" id="pop-alloc-wrap"></div>
+      </div>
+    </section>
+  </main>
+
+  <main id="mode-disturbance" hidden>
+    <section class="card">
+      <h2>1. 录入数据</h2>
+      <p class="hint">
+        录入原有地区人口与基准总席位，以及一个新增地区的人口和新增席位扫描区间。
+        对每个新增席位数，先按现有精确 Hamilton 规则计算原地区基准分配，
+        再将新增地区并入、以基准席位加新增席位重新分配。
+      </p>
+      <table class="input-table">
+        <thead>
+          <tr><th class="col-num">#</th><th>原地区名称</th><th>人口（正整数）</th><th class="col-op"></th></tr>
+        </thead>
+        <tbody id="dist-tbody"></tbody>
+      </table>
+      <div class="toolbar">
+        <button id="dist-add-region" type="button">＋ 添加原地区</button>
+        <button id="dist-load-example" type="button">载入可复现示例</button>
+      </div>
+      <div class="range-inputs">
+        <label>基准总席位
+          <input type="number" id="dist-base-seats" min="1" step="1" value="9">
+        </label>
+        <label>新增地区名称
+          <input type="text" id="dist-new-name" maxlength="40" value="丁区">
+        </label>
+        <label>新增地区人口（正整数）
+          <input type="number" id="dist-new-pop" min="1" step="1" value="132">
+        </label>
+      </div>
+      <div class="range-inputs">
+        <label>新增席位起始值
+          <input type="number" id="dist-extra-start" min="1" step="1" value="1">
+        </label>
+        <label>新增席位终止值
+          <input type="number" id="dist-extra-end" min="1" step="1" value="5">
+        </label>
+        <span class="hint">跨度（终止值 − 起始值）不超过 50；每档总席位 = 基准席位 + 新增席位</span>
+      </div>
+      <div class="toolbar">
+        <button id="dist-analyze-btn" class="primary" type="button">开始分析</button>
+        <button id="dist-reset-btn" type="button">清空</button>
+      </div>
+      <p id="dist-error-box" class="error" hidden></p>
+    </section>
+
+    <section id="dist-result-section" hidden>
+      <div class="card" id="dist-summary-card"></div>
+      <div id="dist-event-details"></div>
+      <div class="card">
+        <h2>逐档席位总览</h2>
+        <p class="hint">
+          每行对应一个新增席位数并入重分配后的最终席位；「原地区变化」仅统计原地区。
+          标 ⚠ 的行表示该档原地区中同时出现减席与增席，构成扰动事件。
+        </p>
+        <div class="table-wrap" id="dist-overview-wrap"></div>
       </div>
     </section>
   </main>

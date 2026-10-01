@@ -7,6 +7,7 @@ from app.hamilton import (
     exact_decimal,
     fraction_str,
     hamilton_allocate,
+    new_region_disturbance,
     population_paradox,
     scan_range,
 )
@@ -124,3 +125,73 @@ def test_population_paradox_seat_conservation():
         result = population_paradox([11, 31, 14], [15, 36, 16], s)
         assert sum(r["seats_before"] for r in result["rows"]) == s
         assert sum(r["seats_after"] for r in result["rows"]) == s
+
+
+def test_new_region_disturbance_builtin_example():
+    # 内置示例：原地区 111/197/319、基准 9 席（2、3、4），新增地区人口 132，
+    # 扫描新增席位 1~5；仅新增 2 席（总席位 11）时甲区减席、丙区增席
+    result = new_region_disturbance([111, 197, 319], 9, 132, 1, 5)
+    assert [r["seats"] for r in result["baseline"]["rows"]] == [2, 3, 4]
+
+    by_extra = {e["extra_seats"]: e for e in result["results"]}
+    # 新增 1 席：甲区减席但无原地区增席（新地区直接得 2 席），不是扰动
+    assert by_extra[1]["is_disturbance"] is False
+    assert [x["delta"] for x in by_extra[1]["deltas"]] == [-1, 0, 0]
+    assert by_extra[1]["new_region_seats"] == 2
+
+    # 新增 2 席：甲区 2->1 减席、丙区 4->5 增席，构成扰动
+    event = by_extra[2]
+    assert event["is_disturbance"] is True
+    assert [r["seats"] for r in event["rows"]] == [1, 3, 5, 2]
+    assert [x["delta"] for x in event["deltas"]] == [-1, 0, 1]
+    assert [(x["index"], x["before"], x["after"]) for x in event["losers"]] == [(0, 2, 1)]
+    assert [(x["index"], x["before"], x["after"]) for x in event["gainers"]] == [(2, 4, 5)]
+
+    # 其余档位都不是扰动
+    for k in (3, 4, 5):
+        assert by_extra[k]["is_disturbance"] is False
+
+    assert len(result["disturbances"]) == 1
+    d = result["disturbances"][0]
+    assert (d["extra_seats"], d["seats_total"]) == (2, 11)
+
+
+def test_new_region_disturbance_only_gainers_is_not_event():
+    # 新增地区人口极小：新增 2~4 席时原地区只可能持平或增席，不构成扰动
+    result = new_region_disturbance([44, 43, 7, 6], 10, 1, 2, 4)
+    assert result["disturbances"] == []
+    for entry in result["results"]:
+        assert entry["is_disturbance"] is False
+        assert entry["losers"] == []
+        # 每档总席位守恒（含新增地区）
+        assert sum(r["seats"] for r in entry["rows"]) == entry["seats_total"]
+
+
+def test_new_region_disturbance_only_losers_is_not_event():
+    # 大新增地区在新增 1 席时可能令多个原地区同时减席但无人增席：不算扰动
+    result = new_region_disturbance([35, 222, 287], 23, 66, 1, 1)
+    entry = result["results"][0]
+    assert [x["delta"] for x in entry["deltas"]] == [-1, 0, -1]
+    assert entry["gainers"] == []
+    assert entry["is_disturbance"] is False
+    assert result["disturbances"] == []
+
+
+def test_new_region_disturbance_seat_conservation_and_baseline_unchanged():
+    pops = [111, 197, 319]
+    result = new_region_disturbance(pops, 9, 132, 1, 50)
+    assert len(result["results"]) == 50
+    for entry in result["results"]:
+        assert sum(r["seats"] for r in entry["rows"]) == entry["seats_total"]
+        # 基准分配在每档比较中保持一致
+        assert [x["before"] for x in entry["deltas"]] == [2, 3, 4]
+        # 变化量总和加上新增地区席位等于新增席位数
+        assert sum(x["delta"] for x in entry["deltas"]) + entry["new_region_seats"] == entry["extra_seats"]
+
+
+def test_new_region_disturbance_exact_fractions():
+    # 并入后总席位 11、总人口 759 的精确配额：甲 111*11/759 = 37/23
+    result = new_region_disturbance([111, 197, 319], 9, 132, 2, 2)
+    rows = result["results"][0]["rows"]
+    assert rows[0]["quota"] == Fraction(37, 23)
+    assert rows[0]["remainder"] == Fraction(14, 23)
